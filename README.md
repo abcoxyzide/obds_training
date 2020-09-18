@@ -1,1 +1,1 @@
-OBDS training repository, by Phil
+OBDS training repo, by phil
