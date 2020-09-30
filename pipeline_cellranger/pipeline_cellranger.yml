@@ -1,0 +1,4 @@
+cellrangercount:
+    transcriptome: /ifs/mirror/cellranger/refdata-cellranger-GRCh38-3.0.0
+    threads: 20
+    memory: 100

@@ -7,7 +7,8 @@ Purpose:
 Flow:
 1. fastQC
 2. multiQC
-3.
+3. mapping using hisat2
+4. then QC again
 
 """
 
