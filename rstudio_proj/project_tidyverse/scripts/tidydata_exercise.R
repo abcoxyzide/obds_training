@@ -1,4 +1,4 @@
-lapply(c('tidyverse', 'cowplot', 'gridExtra','patchwork', 'scales', 'biomaRt', 'pheatmap'), require, character.only = TRUE)
+lapply(c('tidyverse', 'cowplot', 'gridExtra','patchwork', 'scales', 'pheatmap'), require, character.only = TRUE)
 
 sample_tbl <- read_tsv('data/obds_sampletable.tsv')
 counts_tbl <- read_tsv('data/obds_countstable.tsv.gz')
@@ -19,9 +19,9 @@ counts_tbl <- read_tsv('data/obds_countstable.tsv.gz')
 #     listAttributes() %>% 
 #     View()
 
-conversion_tbl <- useMart(biomart='ENSEMBL_MART_ENSEMBL',
+conversion_tbl <- biomaRt::useMart(biomart='ENSEMBL_MART_ENSEMBL',
                dataset='mmusculus_gene_ensembl') %>% 
-    getBM(mart=., attributes=c('mgi_symbol', 'ensembl_gene_id')) %>%
+    biomaRt::getBM(mart=., attributes=c('mgi_symbol', 'ensembl_gene_id')) %>%
     as_tibble()
 
 # tidy the counts table and add the gene symbol
@@ -56,7 +56,8 @@ processed_tdy %>%
          x='Sample ID',
          y='Read Depth') +
     theme(plot.title = element_text(hjust=0.5),
-          axis.text.x = element_text(angle=90, vjust=0.5))
+          axis.text.x = element_text(angle=90, vjust=0.5)) +
+    scale_y_log10()
 
 # How many genes have no counts for any sample?
 processed_tdy %>% 
@@ -73,8 +74,8 @@ processed_tdy %>%
 # Filter out genes that have low expression in 3 or more samples (ie CPM < 0.5)
 filtered_tdy <-  processed_tdy %>% 
     group_by(Geneid) %>% 
-    mutate(low_expression=sum(CPM<0.5)) %>% 
-    filter(low_expression<3) %>% 
+    mutate(high_expression=sum(CPM > 0.5)) %>% 
+    filter(high_expression >= 3) %>% 
     ungroup
 
 # What proportion of genes are lowly expressed?
@@ -86,6 +87,7 @@ genes_remain <- length(unique(filtered_tdy$Geneid))
 filtered_tdy %>% 
     ggplot(aes(x=log2CPM)) +
     geom_density(aes(color=sampleid))
+    # geom_histogram() + facet_wrap(~sampleid, ncol=3)
 
 # Plot CD4 and CD8 expression for all samples, colour by replicate and facet by genotype against cell type
 filtered_tdy %>% 
@@ -102,11 +104,22 @@ filtered_tdy %>%
     facet_grid(celltype ~ Genotype)
 
 # Choose 8 biologically relevant genes and plot a heatmap using the pheatmap package
-relevant_genes <- c('Dnmt1','Dnmt3a','Dnmt3b','Tet1','Tet2','Tet3','Arid1a','Arid1b')
+
+# either by gene of interest:
+# relevant_genes <- c('Dnmt1','Dnmt3a','Dnmt3b','Tet1','Tet2','Tet3','Arid1a','Arid1b')
+
+# or by filtering for highly variable genes
+relevant_genes <- filtered_tdy %>% 
+    group_by(Geneid) %>% 
+    summarise(variance = var(log2CPM), mgi_symbol = unique(mgi_symbol)) %>% 
+    arrange(-variance) %>% 
+    slice_head(n=20) %>% 
+    pull(mgi_symbol)
+
 filtered_tdy %>% 
     filter(mgi_symbol %in% relevant_genes) %>%
     select(c(mgi_symbol, Genotype, celltype, replicate, log2CPM)) %>%
     pivot_wider(names_from=c(Genotype, celltype, replicate), names_sep='_', values_from=log2CPM) %>% 
     arrange(mgi_symbol) %>% 
     column_to_rownames('mgi_symbol') %>%
-    pheatmap
+    pheatmap(scale='row')
